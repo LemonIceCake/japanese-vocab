@@ -2426,6 +2426,9 @@ export default function App() {
   const [isDailyMode, setIsDailyMode] = useState(false);
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  // New: Calendar View State (Offset in weeks, 0 = current week)
+  const [calendarWeekOffset, setCalendarWeekOffset] = useState(0);
 
   // Settings State
   const [jsonInput, setJsonInput] = useState('');
@@ -2536,7 +2539,7 @@ export default function App() {
     setDailyQueue(shuffled);
     setIsDailyMode(false);
     setIsReviewMode(true);
-    setView('quiz'); // 複習直接進入測驗模式比較合理，或者也可以讓選單選
+    setView('quiz'); 
   };
 
   // 3. 一般分類練習
@@ -2570,8 +2573,31 @@ export default function App() {
   const getTotalWords = () => Object.values(data).reduce((acc, curr) => acc + curr.length, 0);
   const isToday = (date) => {
     const today = new Date();
-    return date.getDate() === today.getDate() && date.getMonth() === today.getMonth();
+    return date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
   };
+  const isFuture = (date) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const target = new Date(date);
+    target.setHours(0,0,0,0);
+    return target > today;
+  }
+
+  // Generate Calendar Days
+  const calendarDays = useMemo(() => {
+    const days = [];
+    const today = new Date();
+    // Anchor point: Start from 2 days ago, then shift by weeks
+    const startPoint = new Date(today);
+    startPoint.setDate(today.getDate() - 2 + (calendarWeekOffset * 7));
+    
+    for (let i = 0; i < 5; i++) {
+        const d = new Date(startPoint);
+        d.setDate(startPoint.getDate() + i);
+        days.push(d);
+    }
+    return days;
+  }, [calendarWeekOffset]);
 
   return (
     <div className="min-h-screen bg-stone-50 font-sans text-stone-800 pb-10">
@@ -2610,25 +2636,26 @@ export default function App() {
                  <h2 className="font-bold text-lg flex items-center gap-2 text-indigo-900">
                    <CalendarIcon size={20} /> 學習日程
                  </h2>
-                 <span className="text-sm text-stone-400">
-                   {selectedDate.getFullYear()}年 {selectedDate.getMonth()+1}月
-                 </span>
+                 <div className="flex items-center gap-2 bg-stone-100 rounded-lg p-1">
+                    <button onClick={() => setCalendarWeekOffset(prev => prev - 1)} className="p-1 hover:bg-white rounded-md transition text-stone-500"><ChevronLeft size={16}/></button>
+                    <span className="text-xs font-mono text-stone-500 w-16 text-center">
+                        {calendarWeekOffset === 0 ? '本週' : calendarWeekOffset === -1 ? '上週' : calendarWeekOffset > 0 ? '下週' : `${Math.abs(calendarWeekOffset)}週前`}
+                    </span>
+                    <button onClick={() => setCalendarWeekOffset(prev => prev + 1)} className="p-1 hover:bg-white rounded-md transition text-stone-500"><ChevronRight size={16}/></button>
+                 </div>
               </div>
               
-              {/* 簡單的一週日期選擇器 */}
-              <div className="flex justify-between mb-4">
-                {Array.from({length: 5}).map((_, i) => {
-                  // 顯示今天與未來4天
-                  const d = new Date();
-                  d.setDate(d.getDate() + i - 1); // 包含昨天做參考
-                  const isSelected = d.getDate() === selectedDate.getDate();
+              {/* 日期選擇器 */}
+              <div className="flex justify-between mb-4 gap-1">
+                {calendarDays.map((d, i) => {
+                  const isSelected = d.getDate() === selectedDate.getDate() && d.getMonth() === selectedDate.getMonth();
                   const isTodayDate = isToday(d);
                   
                   return (
                     <button 
                       key={i}
                       onClick={() => setSelectedDate(d)}
-                      className={`flex flex-col items-center justify-center w-12 h-14 rounded-xl transition-all ${
+                      className={`flex flex-col items-center justify-center flex-1 py-2 rounded-xl transition-all ${
                         isSelected 
                           ? 'bg-indigo-600 text-white shadow-lg scale-105' 
                           : isTodayDate 
@@ -2646,16 +2673,28 @@ export default function App() {
               {/* 每日任務按鈕 */}
               <button 
                 onClick={startDailyMission}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 transition flex items-center justify-center gap-2 relative overflow-hidden group"
+                className={`w-full py-4 rounded-xl font-bold shadow-lg active:scale-95 transition flex items-center justify-center gap-2 relative overflow-hidden group ${
+                    isFuture(selectedDate) 
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white' // Future
+                    : isToday(selectedDate)
+                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' // Today
+                        : 'bg-stone-700 text-white' // Past
+                }`}
               >
                 <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition"></div>
-                <RefreshCw size={20} /> 
-                {isToday(selectedDate) ? '開始今日特訓' : `練習 ${selectedDate.getMonth()+1}/${selectedDate.getDate()} 的單字`}
+                {isFuture(selectedDate) ? <Clock size={20} /> : <RefreshCw size={20} />}
+                
+                {isToday(selectedDate) 
+                    ? '開始今日特訓' 
+                    : isFuture(selectedDate)
+                        ? `預習 ${selectedDate.getMonth()+1}/${selectedDate.getDate()} 的單字`
+                        : `複習 ${selectedDate.getMonth()+1}/${selectedDate.getDate()} 的單字`
+                }
                 <span className="text-xs bg-white bg-opacity-20 px-2 py-0.5 rounded ml-2">40字</span>
               </button>
             </div>
 
-            {/* 🏆 總複習按鈕 (新功能) */}
+            {/* 🏆 總複習按鈕 */}
             <div 
               onClick={startMasterReview}
               className="bg-amber-100 border border-amber-200 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-amber-200 transition shadow-sm group"
@@ -2714,7 +2753,7 @@ export default function App() {
           <StudyMode 
             words={dailyQueue} 
             isDaily={isDailyMode}
-            label={isDailyMode ? `${selectedDate.getMonth()+1}/${selectedDate.getDate()} 每日任務` : CATEGORIES.find(c => c.key === activeCategory)?.label}
+            label={isDailyMode ? `${selectedDate.getMonth()+1}/${selectedDate.getDate()} ${isFuture(selectedDate) ? '預習' : isToday(selectedDate) ? '今日特訓' : '複習'}` : CATEGORIES.find(c => c.key === activeCategory)?.label}
             onBack={() => setView('home')} 
             onMarkLearned={handleMarkAsLearned}
             learnedIds={learnedHistory}
@@ -2999,5 +3038,4 @@ function SettingsMode({ jsonInput, setJsonInput, handleSaveData, saveStatus, onB
     </div>
   );
 }
-
 
